@@ -1,0 +1,200 @@
+//
+//  定义客户端、服务器之间的通讯协议
+//
+
+syntax = "proto3";
+package pb;
+
+enum ErrorCode
+{
+    ErrorCode_NONE  = 0;
+    ErrorCode_System_Exception      = 1;
+
+    ErrorCode_Net_DbError           = 1000;
+    ErrorCode_Net_ProtocalLength    = 1001;
+    ErrorCode_Net_ProtocalInvalid   = 1002;
+    ErrorCode_Net_ProtocalLengthMax = 1003;
+}
+
+// 通过枚举定义每个Req/Rsp/Notify的ID
+enum CmdId
+{
+    CMD_NONE = 0;
+    CMD_ECHO = 1;
+    CMD_REGISTER_REQ = 101;
+    CMD_REGISTER_RSP = 102;
+    CMD_LOGIN_REQ = 103;
+    CMD_LOGIN_RSP = 104;
+    CMD_ENTER_ROOM_REQ = 105;
+    CMD_ENTER_ROOM_RSP = 106;
+    CMD_SEND_MSG_REQ = 107;
+    CMD_SEND_MSG_RSP = 108;
+    CMD_MSG_NOTIFY = 109;
+    CMD_USER_ENTER_NOTIFY = 110;
+    CMD_USER_LEAVE_NOTIFY = 111;
+    CMD_CHANGE_NICKNAME_REQ = 112;
+    CMD_CHANGE_NICKNAME_RSP = 113;
+    CMD_PING_NOTIFY = 114;
+    CMD_CHANGE_NICKNAME_NOTIFY = 115;
+    CMD_LEAVE_ROOM_REQ = 116;
+    CMD_LEAVE_ROOM_RSP = 117;
+}
+
+message CmdData
+{
+    uint32 cmdid = 1;
+    string cmddata = 2;
+    uint32 ret = 3; // ErrorCode
+}
+
+message EchoCmd
+{
+    string msg = 1;
+}
+
+// 一条聊天消息
+message ChatMsg
+{
+    string username = 1;    // 发送者用户名
+    string nickname = 2;    // 发送者的昵称
+    uint32 time = 3;    // 发送消息的时间戳
+    string content = 4; // 消息内容
+}
+
+// 注册账号
+message RegisterReq
+{
+    string username = 1;    // 用户名，登录时使用，全局唯一
+    string nickname = 2;    // 昵称，显示在聊天室中
+    string passwd = 3;      // 密码
+}
+
+message RegisterRsp
+{
+    enum Retcode
+    {
+        RET_SUCC = 0;
+        RET_FAIL = 1;               // 其它系统错误，比如DB不可用等等，可统一显示为：系统繁忙，请稍候再试
+        RET_USERNAME_LEN_ERROR = 2; // 用户名不可以为空, 也不能超出DB的存储长度
+        RET_USERNAME_REPEAT = 3;    // 用户名重复
+        RET_NICKNAME_LEN_ERROR = 4; // 昵称不可以为空, 也不能超出DB的存储长度
+        RET_PASSWD_TOO_SHORT = 5;   // 密码长度不能小于6位
+        RET_REGISTER_TOO_OFFEN = 6; // 同一个IP不能注册太频繁，防止用机器人注册大量小号；具体限制策略自行发挥
+    }
+    Retcode retcode = 1;    // 注册结果
+}
+
+// 登录
+message LoginReq
+{
+    string username = 1;
+    string passwd = 2;
+}
+message LoginRsp
+{
+    enum Retcode
+    {
+        RET_SUCC = 0;
+        RET_FAIL = 1;
+        RET_ACCOUNT_ERROR = 2;  // 账号不存在、或者密码错误
+        RET_ACCOUNT_FREEZE = 3; // 如果连续频率很高的输错密码，则临时冻结账号一段时间，降低被暴力猜测密码的可能; 具体策略自行发挥
+        RET_ACCOUNT_ONLINE = 4; // 账号已经在线，不能重复登陆; 也可以设计为顶号的逻辑; 不管怎么样，同一个账号、同一时间只能有一个可用的登录
+    }
+    Retcode retcode = 1;    // 登录结果
+    uint32 usrid = 2;
+}
+
+// 进入聊天室
+message EnterRoomReq
+{
+    uint32 room_id = 1; // 要进入的房间编号, 如果不存在就自动创建; 至于是否要限制room_id的取值范围，自行决定
+}
+message EnterRoomRsp
+{
+    enum Retcode
+    {
+        RET_SUCC = 0;
+        RET_FAIL = 1;
+        RET_ROOM_FULL = 2;  // 如果不限制同一个房间的人数，可能会出现严重的性能问题
+    }
+    Retcode retcode = 1;
+    uint32 room_id = 2; // 房间ID
+    repeated string username_list = 3;  // 当前房间里所有人的列表
+    repeated ChatMsg history_msg_list = 4;  // 当前聊天室最近的10条聊天消息
+}
+
+message LeaveRoomReq
+{
+
+}
+
+message LeaveRoomRsp
+{
+    enum Retcode
+    {
+        RET_SUCC = 0;
+        RET_FAIL = 1;
+    }
+    Retcode retcode = 1;
+}
+
+// 发送消息
+message SendMsgReq
+{
+    string msg = 1; // 发送的聊天内容
+}
+message SendMsgRsp
+{
+    enum Retcode
+    {
+        RET_SUCC = 0;
+        RET_FAIL = 1;
+        RET_NOT_IN_ROOM = 2;    // 玩家还不在任何一个房间中
+    }
+    Retcode retcode = 1;
+}
+
+// 广播消息给聊天室里的每个人: 服务器 -> 客户端
+message MsgNotify
+{
+    ChatMsg msg = 1;
+}
+
+// 有人进入、离开聊天室时，要通知到其他人看到: 服务器 -> 客户端
+message UserEnterNotify
+{
+    string username = 1; // 用户名
+    string nickname = 2; // 昵称
+}
+message UserLeaveNotify
+{
+    string username = 1; // 用户名
+    string nickname = 2; // 昵称
+}
+
+message ChangeNicknameReq
+{
+    string nickname = 1;    // 修改后的昵称
+}
+
+message ChangeNicknameRsp
+{
+    enum Retcode
+    {
+        RET_SUCC = 0;
+        RET_FAIL = 1;               // 其它系统错误，比如DB不可用等等，可统一显示为：系统繁忙，请稍候再试
+        RET_NICKNAME_LEN_ERROR = 2; // 昵称不可以为空, 也不能超出DB的存储长度
+    }
+    Retcode retcode = 1;    // 修改结果
+}
+
+message NicknameChangeNotify
+{
+    string username = 1;    // 昵称变化用户的的用户名
+    string nickname = 2;    // 新昵称
+}
+
+// 客户端用于保持心跳的通知, 
+message PingNotify
+{
+}
